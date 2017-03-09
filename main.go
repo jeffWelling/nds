@@ -11,6 +11,24 @@ import (
   "github.com/urfave/cli"
 )
 
+func updateConfigs(configs map[string]nftConfigFile) map[string]nftConfigFile {
+  return configs
+}
+
+func writeConfigs(configs map[string]nftConfigFile) {
+  f_content := ""
+  _ = f_content
+  for filename, config := range configs {
+		f_content = "table "
+    _ = filename
+    for i, set := range config.nftTables {
+      _ = i
+      _ = set
+    }
+  }
+  log("Done writing config files")
+}
+
 func main() {
   app := cli.NewApp()
   app.Name = "dnstrigger"
@@ -19,7 +37,9 @@ func main() {
     cli.BoolFlag{ Name: "verbose" },
   }
   app.Action = func( c *cli.Context ) error {
-    readAllConfigs()
+    configs := readAllConfigs()
+    configs =  updateConfigs(configs)
+    writeConfigs(configs)
     return nil
   }
   app.Run(os.Args)
@@ -36,7 +56,8 @@ func readConfigErrCheck(e error, filename string) {
   }
 }
 
-func readSetFile(config_file string) []nftSet {
+func readSetFile(config_file string) nftConfigFile {
+  log(strings.Join([]string{"Loading ", config_file}, ": "))
   data, err := ioutil.ReadFile(config_file)
   readConfigErrCheck(err, config_file)
   data_string := strings.Fields( string(data) )
@@ -47,14 +68,13 @@ func readSetFile(config_file string) []nftSet {
   nftTableName  := "<notset>"
   nftSetName       := "<notset>"
   nftType       := "<notset>"
-  nftElements   := make([]string, 1)
+  nftElements   := make([]string, 0)
   nftSets       := make([]nftSet, 0)
   set           := nftSet{}
+  table         := nftTable{}
+  config        := nftConfigFile{nftConfigFileName: path.Base(config_file)}
 
   for i, _ := range data_string {
-    fmt.Printf("word: %s\n", data_string[i])
-    fmt.Printf("breakpoint: %d\n", breakpoint)
-    fmt.Printf("i: %d\n\n", i)
     if i < breakpoint {
       continue
     }
@@ -62,6 +82,8 @@ func readSetFile(config_file string) []nftSet {
       nftAddrFamily = data_string[i + 1]
       nftTableName  = data_string[i + 2]
       breakpoint = i + 4
+      table = nftTable{nftAddrFamily: nftAddrFamily, nftTableName: nftTableName}
+      table.nftSets = make([]nftSet, 0)
       continue
     }
     if data_string[i] == "set" {
@@ -77,6 +99,7 @@ func readSetFile(config_file string) []nftSet {
     }
     if data_string[i] == "elements" {
       i = i + 3
+      nftElements = make([]string, 0)
       for true {
         if data_string[i] == "}" {
           break
@@ -89,7 +112,6 @@ func readSetFile(config_file string) []nftSet {
     }
     if in_set_decl == true {
 			if data_string[i] == "}" {
-        fmt.Printf("Adding a thingy...")
         set = nftSet{ nftAddrFamily: nftAddrFamily,
           nftTableName: nftTableName,
           nftSetName: nftSetName,
@@ -97,20 +119,28 @@ func readSetFile(config_file string) []nftSet {
           nftFilename: path.Base(config_file),
           nftElements: nftElements }
         nftSets = append( nftSets, set )
+        table.nftSets = append( table.nftSets, set )
 				in_set_decl = false
         continue
       }
     }
     if data_string[i] == "}" {
       // End of 'table' declaration in file.
+      config.nftTables = append( config.nftTables, table )
     }
   }
-  return nftSets
+  return config
 }
 
-func readConfig(config_file string) []nftSet {
-  log(strings.Join([]string{"Loading ", config_file}, ": "))
-  return readSetFile(config_file)
+type nftConfigFile struct {
+  nftConfigFileName string
+  nftTables []nftTable
+}
+
+type nftTable struct {
+  nftAddrFamily string
+  nftTableName string
+  nftSets []nftSet
 }
 
 type nftSet struct {
@@ -124,16 +154,13 @@ type nftSet struct {
 
 // Read `/etc/nft.conf.d/sets.s/*.conf`
 // return config structure
-func readAllConfigs() {
-  log("Reading config")
-  configs := make(map[string]nftSet)
+func readAllConfigs() map[string]nftConfigFile {
+  configs := make(map[string]nftConfigFile)
   loadable_files, _ := filepath.Glob("/etc/nft.conf.d/sets.d/domains.d/*.conf")
   for  _, config_file := range loadable_files {
-    file_sets := readConfig(config_file)
-    for _,set := range file_sets {
-      configs[set.nftFilename] = set
-    }
+    config := readSetFile(config_file)
+    configs[config.nftConfigFileName] = config
   }
-  log("Done reading config:")
   fmt.Println(configs)
+  return configs
 }
