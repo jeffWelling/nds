@@ -16,15 +16,28 @@ func updateConfigs(configs map[string]nftConfigFile) map[string]nftConfigFile {
 }
 
 func writeConfigs(configs map[string]nftConfigFile) {
+  log("Writing configs...")
   f_content := ""
   _ = f_content
   for filename, config := range configs {
-		f_content = "table "
+    f_content = ""
     _ = filename
-    for i, set := range config.nftTables {
+    for i, table := range config.nftTables {
       _ = i
-      _ = set
+      f_content += "table " + table.nftAddrFamily + " " + table.nftTableName + " {\n"
+      for i, set := range table.nftSets {
+        _ = i
+        f_content += "  set "+set.nftSetName+" {\n    type "+set.nftType+"\n    elements = {\n"
+        for _, element := range set.nftElements {
+          f_content += "      "+element+"\n"
+        }
+        f_content += "    }\n"
+        f_content += "  }\n"
+      }
     }
+    f_content += "}\n"
+    log(filename)
+    log(f_content)
   }
   log("Done writing config files")
 }
